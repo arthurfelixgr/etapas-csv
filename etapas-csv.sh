@@ -1,7 +1,8 @@
-#! /bin/sh - 
+#! /bin/bash -
 
 # Escrito por Arthur Félix dos Santos Grassi - 3S QSS BCO
-# Recife, 05 de abril de 2024
+# Recife, 20 de julho de 2025
+
 
 raiz=$(readlink -f $(dirname $0))
 title="Etapas CSV"
@@ -13,27 +14,48 @@ then
     exit 1
 fi
 
-header='**NR_ORDEM**;MÊS;ANO;LEGISLAÇÃO EM VIGOR;LTR;DIAS DE CONCESSÃO DO AUXÍLIO ALIMENTAÇÃO;LTR1;DIAS DO MÊS DE CONCESSÃO DO AUXÍLIO ALIMENTAÇÃO;LT2;NÚMERO DE DIAS;LTR3;DIAS DE CONCESSÃO DO AUXÍLIO ALIMENTAÇÃO(LTR3)'
 amparo='letra “e” do inciso I do art. 2º e inciso XIII do art. 3º da Medida Provisória nº 2.215-10, de 31/08/2001, art. 66, inciso II do art. 67, caput e § 1º do art. 71 e art. 73 do Decreto nº 4.307, de 18/07/2002, parágrafo único do art. 2º, incisos I e II do art. 4º da Portaria nº 359/GC4, de 06/04/2016 (MILITAR DO CINDACTA III). Número Ofício: '"$oficio"
 
-sgpo () {
+if ! editaAmparo=$(echo "$amparo" | zenity --text-info --title "Confirme o amparo: "  --ok-label Confirmar --extra-button Editar)
+then
+    if [ "$editaAmparo" == "Editar" ]
+    then
+        if ! amparo=$(echo "$amparo" | zenity --text-info --title "Confirme o amparo: "  --editable)
+        then
+            zenity --error --title "$title" --text "Amparo normativo não confirmado."
+            exit 1
+        fi
+    else
+        zenity --error --title "$title" --text "Amparo normativo não confirmado."
+        exit 1
+    fi
+fi
+
+amparo=$(echo "$amparo" | tr '\n' '@' | sed 's/@//g')
+
+header='**NR_ORDEM**;MÊS;ANO;LEGISLAÇÃO EM VIGOR;LTR;DIAS DE CONCESSÃO DO AUXÍLIO ALIMENTAÇÃO;LTR1;DIAS DO MÊS DE CONCESSÃO DO AUXÍLIO ALIMENTAÇÃO;LT2;NÚMERO DE DIAS;LTR3;DIAS DE CONCESSÃO DO AUXÍLIO ALIMENTAÇÃO(LTR3)'
+
+sgpo() {
     FILE=`zenity  --title "Escolha o PDF do SGPO: " --filename="$HOME/" --file-selection --file-filter "*.pdf"`
     if [ -z "$FILE" ]
     then
         zenity --error --title "$title" --text "Nenhum arquivo PDF foi escolhido."
         exit 1
     fi
-
-    pdftops "$FILE"
-    arquivo=$( echo "$FILE" | sed 's/\.pdf/.ps/' )
-
-    if ! grep '(RELAT\\323RIO DE EXPOSI\\307\\303O PARA AUX\\315LIO-ALIMENTA\\307\\303\\' "$arquivo" > /dev/null
+    
+    pdftohtml -c -i -s "$FILE"
+    
+    (
+    arquivo=$( echo "$FILE" | sed 's/\.pdf/-html.html/' )
+    sed -i -E 's/(&#160;)+/ /g' "$arquivo"
+    if ! grep -q 'RELATÓRIO DE EXPOSIÇÃO PARA AUXÍLIO-ALIMENTAÇÃO' "$arquivo"
     then
         rm "$arquivo"
         zenity --error --title "$title" --text "PDF inválido!"
         exit 1
     fi
-
+    
+    titulo=$(grep 'RELATÓRIO DE EXPOSIÇÃO PARA AUXÍLIO-ALIMENTAÇÃO' "$arquivo" | head -n1 | sed -E 's/<[^>]*>//g')
     de=''
 
     case "$1" in
@@ -48,108 +70,84 @@ sgpo () {
         "wf")
             de="APP-RF DE"
         ;;
+
+        "rf")
+            de="TWR-RF DE"
+        ;;
+
+        "wk")
+            de="APP-PS DE"
+        ;;
+
+        "ps")
+            de="TWR-PS DE"
+        ;;
     esac
-
-    echo "$de"
-    mes=$( grep "$de" "$arquivo" | head -n1 | sed 's/)$//' | cut -d' ' -f5 | sed 's/MAR\\347O/MARÇO/g' )
-    ano=$( grep "$de" "$arquivo" | head -n1 | sed 's/)$//' | cut -d' ' -f7 )
-
-    echo "Mês: $mes"
-    echo "Ano: $ano"
     
-    if [ -z "$mes" ] || [ -z "$ano" ] 
+    if ! echo "$titulo" | grep -q "$de"
     then 
         zenity --error --title "$title" --text "Órgão operacional incorreto. \nVerifique o documento ou o órgão selecionado. "
         exit 1
-    fi 
+    fi
+    
+    IFS=' ' read -a tituloArray <<< "$titulo"
+    mes="${tituloArray[-3]}"
+    ano="${tituloArray[-1]}"
 
-    if grep -q "24H)" "$arquivo" # se arquivo novo
-    then # então, filtro novo
-        grep '^([^()]*)$' "$arquivo" | 
-            sed -e 's/^(//' -e 's/)$//' | 
-                sed -e '/MINIST/,/SOMA/d' -e '/ASS\. Comandante/d' -e 's/^[0-9]\{5,\}$/\n&/' | 
-                    tr '\n' '@' | 
-                        sed -e 's/@@/\n/g' -e 's/^@//' -e 's/@$/\n/' | 
-        while read linha
-        do
-            saram=$(echo "$linha" | cut -d'@' -f1)
+    echo "Mês: $mes"
+    echo "Ano: $ano" 
 
-            ltr3=$(echo "$linha" | grep -oE "@<= 08H@([0-9]{1,},* *){1,},*@" | sed 's/.*H@\([^@]*\)@/\1/')
-            echo "$ltr3" | grep -q ', *$' && ltr3=$(echo "$linha" | grep -oE "@<= 08H@([0-9]{1,},* *){1,}, *@[^@]*@" | sed 's/.*H@\([^@]*\)@\([^@]*\)@/\1 \2/') 
-            
-            if [ "X$ltr3" = "X0" ]
-            then 
-                ltr3=''
-                ltr3x=''
-            elif [ -n "$ltr" ] 
-            then 
-                ltr3x='X' 
-            fi
-            
-            ltr=$(echo "$linha" | grep -oE "@> 08H <( *|@)24H@([0-9]{1,},* *){1,},*@" | sed 's/.*24H@\([^@]*\)@/\1/')
-            echo "$ltr" | grep -q ', *$' && ltr=$(echo "$linha" | grep -oE "@> 08H <( *|@)24H@([0-9]{1,},* *){1,}, *@[^@]*@" | sed 's/.*H@\([^@]*\)@\([^@]*\)@/\1 \2/') 
-            
-            if [ "X$ltr" = "X0" ]
-            then 
-                ltr=''
-                ltrx=''
-            elif [ -n "$ltr" ] 
-            then 
-                ltrx='X' 
-            fi
-            
-            echo "$saram;$mes;$ano;$amparo;$ltrx;$ltr;;;X;0;$ltr3x;$ltr3" >> saida
-        done
-    else # senão, filtro antigo para o arquivo antigo
-        grep '^([^()]*)$' "$arquivo" | 
-        sed -e 's/^(//' -e 's/)$//' | 
-            tr '\n' '@' | 
-                sed -e 's/@ASS/@&/g' -e 's/@[0-9][0-9][0-9][0-9]*/@&/g' | 
-                    tr '@' '\n' | 
-                        sed -e 's/$/@/' -e 's/^@$//' | 
-                            tr '\n' '@' | 
-                                sed -e 's/@@@/\n/g' -e 's/@@/@/g' -e 's/, *@/, /g' | 
-                                    grep -vE '(MINIST\\|Chefe)' | 
-        while read line
-        do 
-            if echo $line | grep '<= 08H@0' > /dev/null
-            then
-                echo $line | while IFS='@' read saram posto nome t3 td3 td tr ltr tdr
-                do
-                    ltrx='X'
-                    lt3x=
-                    lt3=
-                    ltr=$( echo $ltr | sed 's/ //g' )
-                    echo "$saram;$mes;$ano;$amparo;$ltrx;$ltr;;;X;0;$lt3x;$lt3" >> saida
-                done
-            elif echo $line | grep '> 08H@0' > /dev/null
-            then 
-                echo $line | while IFS='@' read saram posto nome t3 lt3 td3 td tr tdr
-                do
-                    ltrx=
-                    lt3x='X'
-                    ltr=
-                    lt3=$( echo $lt3 | sed 's/ //g' )
-                    echo "$saram;$mes;$ano;$amparo;$ltrx;$ltr;;;X;0;$lt3x;$lt3" >> saida
-                done
-            else 
-                echo $line | while IFS='@' read saram posto nome t3 lt3 td3 td tr ltr tdr
-                do
-                    ltrx='X'
-                    lt3x='X'
-                    lt3=$( echo $lt3 | sed 's/ //g' )
-                    ltr=$( echo $ltr | sed 's/ //g' )
-                    echo "$saram;$mes;$ano;$amparo;$ltrx;$ltr;;;X;0;$lt3x;$lt3" >> saida
-                done
-            fi 
-        done 
-    fi 
-
-    produto=$( echo $arquivo | sed 's#.*/\([^/]*\)\.ps#\1.csv#' )
+    cat "$arquivo" |
+      sed -e 's/<[^>]*>//g' \
+      -e 's/&gt;/>/g' \
+      -e 's/&lt;/</g' \
+      -e '/^[[:space:]]*$/d' \
+      -e '/<!--/,/-->/d' \
+      -Ee 's/(^[[:space:]]*|[[:space:]]*$)//g' \
+      -e '/(\.html$|A[sS]{2}\.*.*[cC].* OM$)/d' \
+      -e '/^MINIST.*RIO DA DEFESA$/,/^SOMA$/d' -e 's/^([0-9]{6,})/\n\1/' |
+        tr '\n' '@' |
+          sed -e 's/^@//' -e 's/@@/@\n/g' |
+            sed -e 's/^/{"saram":/' \
+            -e 's/@/, "posto":/' \
+            -Ee 's/(, "posto":[^@]+)@/\1, "nome":/' \
+            -e 's/([^@]+)@([^@]+)(@> 08H <[@ ]*24H@)/, "total-simples":\1, "total":\2\3/' \
+            -e 's/([^@]+)(@>= 24H@)/, "total-cheia":\1\2/' \
+            -e 's/[^@]+@$/, "total-maior":&/' \
+            -e 's/@$/}/' \
+            -e 's/@<= 08H@/, "dias-simples":/' \
+            -e 's/@> 08H <[@ ]*24H@/, "dias-cheia":/' \
+            -e 's/@>= 24H@/, "dias-maior":/' \
+            -e 's/@/ /g' \
+            -e 's/ , "/, "/g' \
+            -e 's/":,/":"",/g' |
+              sed -Ee 's/(^\{|\}$)//g' \
+              -Ee 's/, "[^"]+":/@/g' \
+              -Ee 's/^"[^"]+"://' -e 's/""//g' | 
+                awk -v mes="$mes" -v ano="$ano" -v amparo="$amparo" -F'@' '{ 
+                  saram = $1; 
+                  posto = $2; 
+                  nome = $3; 
+                  diasLtr3 = $4; 
+                  totalLtr3 = $5; 
+                  total = $6; 
+                  diasLtr = $7; 
+                  totalLtr = $8; 
+                  diasLtr1 = $9; 
+                  totalLtr1 = $10; 
+                  ltrX = totalLtr > 0 ? "X" : "";
+                  ltr3X = totalLtr3 > 0 ? "X" : "";
+                  printf "%s;%s;%s;%s;%s;%s;;;X;0;%s;%s\n", saram, mes, ano, amparo, ltrX, diasLtr, ltr3X, diasLtr3 
+                }' > saida
+    
     rm "$arquivo"
+    echo "\n"
+    ) | zenity --progress --text="Por favor, aguarde... " --pulsate --auto-close
+    
+    produto=$( echo "$FILE" | sed -E 's/.*\/([^/]*)\.pdf$/\1.csv/' )
 }
 
-fis () {
+geop() {
     arquivo=`zenity  --title "Escolha o CSV do GEOP: " --filename="$HOME/" --file-selection --file-filter "*.csv"`
     if [ -z "$arquivo" ]
     then
@@ -157,18 +155,63 @@ fis () {
         exit 1
     fi
 
-    mes=$( cal -m `echo $arquivo | sed 's/.*_\([0-9]*\)-[0-9]*.*$/\1/'` | head -n1 | sed -e 's/ *\([A-Za-z][a-z]*\) [0-9]*/\U\1/' -e 's/ *//g' )
-    if [ -z "$mes" ]
+    (
+    nmes=$(echo "$arquivo" | sed 's/.*_\([0-9]*\)-[0-9]*.*$/\1/')
+    if [ -z "$nmes" ]
     then
         zenity --error --title "$title" --text "CSV inválido!"
         exit 1
     fi
+
+    case $nmes in
+        1)
+	        mes="JANEIRO"
+	    ;;
+        2)
+	        mes="FEVEREIRO"
+	    ;;
+        3)
+	        mes="MARÇO"
+	    ;;
+        4)
+	        mes="ABRIL"
+	    ;;
+        5)
+	        mes="MAIO"
+	    ;;
+        6)
+	        mes="JUNHO"
+	    ;;
+        7)
+	        mes="JULHO"
+	    ;;
+        8)
+	        mes="AGOSTO"
+	    ;;
+        9)
+	        mes="SETEMBRO"
+	    ;;
+        10)
+	        mes="OUTUBRO"
+	    ;;
+        11)
+	        mes="NOVEMBRO"
+	    ;;
+        12)
+	        mes="DEZEMBRO"
+	    ;;
+        *)
+	        zenity --error --title "$title" --text "CSV inválido!"
+	        exit 1
+	    ;;
+    esac
+    	
     
     ano=$( echo $arquivo | sed 's/.*_[0-9]*-\([0-9]*\).*$/\1/' )
 
     tail -n +2 "$arquivo" | while IFS=';' read posto quadro esp nome apelido saram lt3 ltr a b c d e 
     do
-        if echo $lt3 | grep '(0)' > /dev/null 
+        if echo $lt3 | grep -q '(0)' 
         then 
             lt3x=
             lt3=
@@ -177,7 +220,7 @@ fis () {
             lt3=$( echo $lt3 | sed 's#"([0-9]*)/\([0-9,]*\)"#\1#' )
         fi
 
-        if echo $ltr | grep '(0)' > /dev/null 
+        if echo $ltr | grep -q '(0)' 
         then 
             ltrx=
             ltr=
@@ -188,19 +231,33 @@ fis () {
         
         echo "$saram;$mes;$ano;$amparo;$ltrx;$ltr;;;X;0;$lt3x;$lt3" >> saida
     done 
-
+    
+    echo "\n"
+    ) | zenity --progress --text="Por favor, aguarde... " --pulsate --auto-close
+    
     produto=$( echo $arquivo | sed 's#.*/\([^/]*\)\(\.csv\)#\1.PORTAL-DA-OM\2#' )
 }
 
+# AQUI COMEÇA A AÇÃO
+
 cd "$raiz"
 
-orgao=$( zenity --list --radiolist --title "$title" --text "Escolha o órgão operacional: "  --hide-header --column "Seleciona" --column "Itens" FALSE "ACC-RE" FALSE "ACC-AO" FALSE "APP-RF" FALSE "FIS" )
+origem=$( zenity --list --radiolist --title "$title" --text "Escolha o sistema de origem: "  --hide-header --column "Seleciona" --column "Itens" FALSE "SGPO" FALSE "GEOP" )
+
+if [ "$origem" == "SGPO" ]
+then
+    orgao=$( zenity --list --radiolist --title "$title" --text "Escolha o órgão operacional: "  --hide-header --column "Seleciona" --column "Itens" FALSE "ACC-RE" FALSE "ACC-AO" FALSE "APP-RF" FALSE "TWR-RF" FALSE "APP-PS" FALSE "TWR-PS" )
+else
+    orgao=$origem #geop
+fi
+
+#orgao=$( zenity --list --radiolist --title "$title" --text "Escolha o órgão operacional: "  --hide-header --column "Seleciona" --column "Itens" FALSE "ACC-RE" FALSE "ACC-AO" FALSE "APP-RF" FALSE "TWR-RF" FALSE "FIS" FALSE "APP-PS" FALSE "TWR-PS" FALSE "SALVAERO" )
 
 case "$orgao" in 
     "ACC-RE")
         sgpo re
     ;;
-
+    
     "ACC-AO")
         sgpo ao
     ;;
@@ -209,12 +266,30 @@ case "$orgao" in
         sgpo wf
     ;;
 
-    "FIS")
-        fis
+    "TWR-RF")
+        sgpo rf
+    ;;
+
+    "APP-PS")
+        sgpo wk
+    ;;
+
+    "TWR-PS")
+        sgpo ps
+    ;;
+    
+    "GEOP")
+        geop
     ;;
 
     *)
-        zenity --error --title "$title" --text "Nenhum órgão operacional foi escolhido."
+        if [ -z "$origem" ]
+        then
+            zenity --error --title "$title" --text "Nenhum sistema de origem foi escolhido."
+        else
+            zenity --error --title "$title" --text "Nenhum órgão operacional foi escolhido."
+        fi
+        
         exit 1
     ;;
 esac
@@ -222,7 +297,7 @@ esac
 sed -i "1i $header" saida
 desktop=$( xdg-user-dir DESKTOP )
 
-salvo=`zenity --file-selection --save --title="Salvando o arquivo..."  --filename="$desktop/$produto" --confirm-overwrite --file-filter "*.csv"`
+salvo=$(zenity --file-selection --save --title="Salvando o arquivo..."  --filename="$desktop/$produto" --confirm-overwrite --file-filter "*.csv")
 if [ -z "$salvo" ]
 then 
     rm saida
