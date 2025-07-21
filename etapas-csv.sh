@@ -122,8 +122,8 @@ sgpo() {
             -e 's/ , "/, "/g' \
             -e 's/":,/":"",/g' |
               sed -Ee 's/(^\{|\}$)//g' \
-              -Ee 's/, "[^"]+":/@/g' \
-              -Ee 's/^"[^"]+"://' -e 's/""//g' | 
+              -e 's/, "[^"]+":/@/g' \
+              -e 's/^"[^"]+"://' -e 's/""//g' | 
                 awk -v mes="$mes" -v ano="$ano" -v amparo="$amparo" -F'@' '{ 
                   saram = $1; 
                   posto = $2; 
