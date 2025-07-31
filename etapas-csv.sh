@@ -1,7 +1,7 @@
 #! /bin/bash -
 
 # Escrito por Arthur Félix dos Santos Grassi - 3S QSS BCO
-# Recife, 20 de julho de 2025
+# Recife, 31 de julho de 2025
 
 
 raiz=$(readlink -f $(dirname $0))
@@ -14,24 +14,11 @@ then
     exit 1
 fi
 
-amparo='letra “e” do inciso I do art. 2º e inciso XIII do art. 3º da Medida Provisória nº 2.215-10, de 31/08/2001, art. 66, inciso II do art. 67, caput e § 1º do art. 71 e art. 73 do Decreto nº 4.307, de 18/07/2002, parágrafo único do art. 2º, incisos I e II do art. 4º da Portaria nº 359/GC4, de 06/04/2016 (MILITAR DO CINDACTA III). Número Ofício: '"$oficio"
+oficio=$(echo "$oficio" | sed -E 's/(^ *| *$)//g')
 
-if ! editaAmparo=$(echo "$amparo" | zenity --text-info --title "Confirme o amparo: "  --ok-label Confirmar --extra-button Editar)
-then
-    if [ "$editaAmparo" == "Editar" ]
-    then
-        if ! amparo=$(echo "$amparo" | zenity --text-info --title "Confirme o amparo: "  --editable)
-        then
-            zenity --error --title "$title" --text "Amparo normativo não confirmado."
-            exit 1
-        fi
-    else
-        zenity --error --title "$title" --text "Amparo normativo não confirmado."
-        exit 1
-    fi
-fi
-
-amparo=$(echo "$amparo" | tr '\n' '@' | sed 's/@//g')
+amparo[6]="letra “e” do inciso I do art. 2º e inciso XIII do art. 3º da Medida Provisória nº 2.215-10, de 31/08/2001, art. 66, inciso II do art. 67, caput e § 1º do art. 71 e art. 73 do Decreto nº 4.307, de 18/07/2002, parágrafo único do art. 2º, incisos I e II do art. 4º da Portaria nº 359/GC4, de 06/04/2016, e de acordo com o Ofício n°"
+amparo[5]="letra “e” do inciso I do art. 2º e inciso XIII do art. 3º da Medida Provisória nº 2.215-10, de 31/08/2001, art. 66, inciso II do art. 67 e caput e § 1º do art. 71 do Decreto nº 4.307, de 18/07/2002, inciso II do art. 4º da Portaria nº 359/GC4, de 06/04/2016, e de acordo com o Ofício n°"
+amparo[1]="letra “e” do inciso I do art. 2º e inciso XIII do art. 3º da Medida Provisória nº 2.215-10, de 31/08/2001, art. 66, caput do art. 71 e art. 73 do Decreto nº 4.307, de 18/07/2002, inciso I do art. 4º da Portaria nº 359/GC4, de 06/04/2016, e de acordo com o Ofício n°"
 
 header='**NR_ORDEM**;MÊS;ANO;LEGISLAÇÃO EM VIGOR;LTR;DIAS DE CONCESSÃO DO AUXÍLIO ALIMENTAÇÃO;LTR1;DIAS DO MÊS DE CONCESSÃO DO AUXÍLIO ALIMENTAÇÃO;LT2;NÚMERO DE DIAS;LTR3;DIAS DE CONCESSÃO DO AUXÍLIO ALIMENTAÇÃO(LTR3)'
 
@@ -124,7 +111,7 @@ sgpo() {
               sed -Ee 's/(^\{|\}$)//g' \
               -e 's/, "[^"]+":/@/g' \
               -e 's/^"[^"]+"://' -e 's/""//g' | 
-                awk -v mes="$mes" -v ano="$ano" -v amparo="$amparo" -F'@' '{ 
+                awk -v mes="$mes" -v ano="$ano" -v oficio="$oficio" -v amparo6="${amparo[6]}" -v amparo5="${amparo[5]}" -v amparo1="${amparo[1]}" -F'@' '{ 
                   saram = $1; 
                   posto = $2; 
                   nome = $3; 
@@ -135,9 +122,29 @@ sgpo() {
                   totalLtr = $8; 
                   diasLtr1 = $9; 
                   totalLtr1 = $10; 
-                  ltrX = totalLtr > 0 ? "X" : "";
-                  ltr3X = totalLtr3 > 0 ? "X" : "";
-                  printf "%s;%s;%s;%s;%s;%s;;;X;0;%s;%s\n", saram, mes, ano, amparo, ltrX, diasLtr, ltr3X, diasLtr3 
+                  
+                  amparos[6] = amparo6; 
+                  amparos[5] = amparo5; 
+                  amparos[1] = amparo1; 
+                  
+                  iAmparo = 0;
+                  ltrX = "";
+                  ltr3X = "";
+                  
+                  if (totalLtr > 0) {
+                    ltrX = "X";
+                    iAmparo += 5;
+                  }
+                  
+                  if (totalLtr3 > 0) {
+                    ltr3X = "X";
+                    iAmparo += 1;
+                  }
+                  
+                  if (iAmparo > 0) {
+                    amparo = amparos[iAmparo] " " oficio
+                    printf "%s;%s;%s;%s;%s;%s;;;X;0;%s;%s\n", saram, mes, ano, amparo, ltrX, diasLtr, ltr3X, diasLtr3 
+                  }
                 }' > saida
     
     rm "$arquivo"
@@ -211,11 +218,14 @@ geop() {
 
     tail -n +2 "$arquivo" | while IFS=';' read posto quadro esp nome apelido saram lt3 ltr a b c d e 
     do
+        iAmparo=0
+        
         if echo $lt3 | grep -q '(0)' 
         then 
             lt3x=
             lt3=
         else
+            iAmparo=$((iAmparo + 1))
             lt3x='X'
             lt3=$( echo $lt3 | sed 's#"([0-9]*)/\([0-9,]*\)"#\1#' )
         fi
@@ -225,11 +235,18 @@ geop() {
             ltrx=
             ltr=
         else
+            iAmparo=$((iAmparo + 5))
             ltrx='X'
             ltr=$( echo $ltr | sed 's#"([0-9]*)/\([0-9,]*\)"#\1#' )
         fi
         
-        echo "$saram;$mes;$ano;$amparo;$ltrx;$ltr;;;X;0;$lt3x;$lt3" >> saida
+        if [ $iAmparo -gt 0 ]
+        then 
+            amparo=${amparo[$iAmparo]}
+            echo "$saram;$mes;$ano;$amparo;$ltrx;$ltr;;;X;0;$lt3x;$lt3" >> saida
+        else 
+            continue
+        fi 
     done 
     
     echo "\n"
