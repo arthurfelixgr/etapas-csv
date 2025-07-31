@@ -3,7 +3,6 @@
 # Escrito por Arthur Félix dos Santos Grassi - 3S QSS BCO
 # Recife, 31 de julho de 2025
 
-
 raiz=$(readlink -f $(dirname $0))
 title="Etapas CSV"
 
@@ -251,6 +250,11 @@ geop() {
     
     echo "\n"
     ) | zenity --progress --text="Por favor, aguarde... " --pulsate --auto-close
+    
+    if ! ls saida 2> /dev/null # nao gera arquivo em caso de csv invalido
+    then
+        exit 1
+    fi
     
     produto=$( echo $arquivo | sed 's#.*/\([^/]*\)\(\.csv\)#\1.PORTAL-DA-OM\2#' )
 }
