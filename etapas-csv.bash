@@ -242,7 +242,7 @@ geop() {
         
         if [ $iAmparo -gt 0 ]
         then 
-            amparo=${amparo[$iAmparo]}
+            amparo="${amparo[$iAmparo]} $oficio"
             echo "$saram;$mes;$ano;$amparo;$ltrx;$ltr;;;X;0;$lt3x;$lt3" >> saida
         else 
             continue
